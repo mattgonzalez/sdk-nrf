@@ -4,12 +4,14 @@
  * SPDX-License-Identifier: LicenseRef-Nordic-5-Clause
  */
 
+#include "echo_aio_bt.h"
 #include <zephyr/kernel.h>
 #include <zephyr/debug/stack.h>
 #include <zephyr/device.h>
 #include <string.h>
 
 #include <zephyr/bluetooth/bluetooth.h>
+#include <zephyr/bluetooth/hci.h>
 #include <zephyr/settings/settings.h>
 #include <zephyr/zbus/zbus.h>
 
@@ -20,11 +22,10 @@
 #include "button_assignments.h"
 #include "nrfx_clock.h"
 #include "ble_core.h"
-#include "sd_card.h"
-#include "board_version.h"
 #include "audio_system.h"
 #include "channel_assignment.h"
 #include "streamctrl.h"
+#include <hal/nrf_gpio.h>
 
 #if defined(CONFIG_AUDIO_DFU_ENABLE)
 #include "dfu_entry.h"
@@ -39,7 +40,6 @@ extern struct k_thread z_main_thread;
 #endif /* defined(CONFIG_INIT_STACKS) */
 
 static atomic_t ble_core_is_ready = (atomic_t) false;
-static struct board_version board_rev;
 
 ZBUS_CHAN_DECLARE(button_chan);
 ZBUS_CHAN_DECLARE(le_audio_chan);
@@ -70,8 +70,12 @@ static int leds_set(void)
 {
 	int ret;
 
-	/* Blink LED 3 to indicate that APP core is running */
+	/* Blink LEDs 1 and 3 to indicate that APP core is running */
 	ret = led_blink(LED_APP_3_GREEN);
+	if (ret) {
+		return ret;
+	}
+	ret = led_blink(LED_APP_2_GREEN);
 	if (ret) {
 		return ret;
 	}
@@ -97,25 +101,6 @@ static int leds_set(void)
 	}
 #endif /* (CONFIG_AUDIO_DEV == HEADSET) */
 
-	return 0;
-}
-
-static int bonding_clear_check(void)
-{
-	int ret;
-	bool pressed;
-
-	ret = button_pressed(BUTTON_5, &pressed);
-	if (ret) {
-		return ret;
-	}
-
-	if (pressed) {
-		if (IS_ENABLED(CONFIG_SETTINGS)) {
-			LOG_INF("Clearing all bonds");
-			bt_unpair(BT_ID_DEFAULT, NULL);
-		}
-	}
 	return 0;
 }
 
@@ -167,6 +152,7 @@ void on_ble_core_ready(void)
 int main(void)
 {
 	int ret;
+	char name[LOCAL_NAME_MAX] = { 0 };
 
 	LOG_DBG("nRF5340 APP core started");
 
@@ -195,23 +181,6 @@ int main(void)
 	ret = fw_info_app_print();
 	ERR_CHK(ret);
 
-	ret = board_version_valid_check();
-	ERR_CHK(ret);
-
-	ret = board_version_get(&board_rev);
-	ERR_CHK(ret);
-
-	if (board_rev.mask & BOARD_VERSION_VALID_MSK_SD_CARD) {
-		ret = sd_card_init();
-		if (ret != -ENODEV) {
-			ERR_CHK(ret);
-		}
-	}
-
-#if defined(CONFIG_AUDIO_DFU_ENABLE)
-	/* Check DFU BTN before initialize BLE */
-	dfu_entry_check((void *)ble_core_init);
-#endif
 
 	/* Initialize BLE, with callback for when BLE is ready */
 	ret = ble_core_init(on_ble_core_ready);
@@ -221,6 +190,13 @@ int main(void)
 	while (!(bool)atomic_get(&ble_core_is_ready)) {
 		(void)k_sleep(K_MSEC(100));
 	}
+
+	// Setup and set local BT name
+	snprintf(name, sizeof name, "%s_%6X", LOCAL_NAME, NRF_FICR->INFO.DEVICEID[0] & 0xffffff);
+	LOG_INF("Local name: %s", name);
+	ret = bt_set_name(name);
+	if (ret) 
+		LOG_WRN("Unable to set name %s (ret %d)", name, ret);
 
 	ret = leds_set();
 	ERR_CHK(ret);

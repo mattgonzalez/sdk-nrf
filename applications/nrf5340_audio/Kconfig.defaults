@@ -102,7 +102,7 @@ config FPU_SHARING
 
 # Enable SDHC interface
 config DISK_DRIVERS
-	default y
+	default n
 
 config DISK_DRIVER_SDMMC
 	default y
@@ -141,6 +141,9 @@ config FS_FATFS_EXFAT
 # Set the maximum file name length to 255
 config FS_FATFS_MAX_LFN
 	default 255
+
+config MCUBOOT_SERIAL
+	default n
 
 config BT_LL_ACS_NRF53
 	default y

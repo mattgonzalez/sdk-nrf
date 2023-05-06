@@ -40,19 +40,15 @@ struct ble_iso_data {
 
 DATA_FIFO_DEFINE(ble_fifo_rx, CONFIG_BUF_BLE_RX_PACKET_NUM, WB_UP(sizeof(struct ble_iso_data)));
 
-ZBUS_SUBSCRIBER_DEFINE(button_sub, CONFIG_BUTTON_MSG_SUB_QUEUE_SIZE);
 ZBUS_SUBSCRIBER_DEFINE(le_audio_evt_sub, CONFIG_LE_AUDIO_MSG_SUB_QUEUE_SIZE);
 
 static struct k_thread audio_datapath_thread_data;
-static struct k_thread button_msg_sub_thread_data;
 static struct k_thread le_audio_msg_sub_thread_data;
 
 static k_tid_t audio_datapath_thread_id;
-static k_tid_t button_msg_sub_thread_id;
 static k_tid_t le_audio_msg_sub_thread_id;
 
 K_THREAD_STACK_DEFINE(audio_datapath_thread_stack, CONFIG_AUDIO_DATAPATH_STACK_SIZE);
-K_THREAD_STACK_DEFINE(button_msg_sub_thread_stack, CONFIG_BUTTON_MSG_SUB_STACK_SIZE);
 K_THREAD_STACK_DEFINE(le_audio_msg_sub_thread_stack, CONFIG_LE_AUDIO_MSG_SUB_STACK_SIZE);
 
 static enum stream_state strm_state = STATE_PAUSED;
@@ -212,15 +208,9 @@ static void audio_datapath_thread(void *dummy1, void *dummy2, void *dummy3)
 							&iso_received_size, K_FOREVER);
 		ERR_CHK(ret);
 
-#if ((CONFIG_AUDIO_DEV == GATEWAY) && (CONFIG_AUDIO_SOURCE_USB))
-		ret = audio_decode(iso_received->data, iso_received->data_size,
-				   iso_received->bad_frame);
-		ERR_CHK(ret);
-#else
 		audio_datapath_stream_out(iso_received->data, iso_received->data_size,
 					  iso_received->sdu_ref, iso_received->bad_frame,
 					  iso_received->recv_frame_ts);
-#endif
 		data_fifo_block_free(&ble_fifo_rx, (void *)&iso_received);
 
 		STACK_USAGE_PRINT("audio_datapath_thread", &audio_datapath_thread_data);
@@ -291,98 +281,6 @@ static int test_tone_button_press(void)
 }
 #endif /* (CONFIG_AUDIO_TEST_TONE) */
 
-/* Handle button activity */
-static void button_msg_sub_thread(void)
-{
-	int ret;
-	const struct zbus_channel *chan;
-
-	while (1) {
-		ret = zbus_sub_wait(&button_sub, &chan, K_FOREVER);
-		ERR_CHK(ret);
-
-		struct button_msg msg;
-
-		ret = zbus_chan_read(chan, &msg, K_MSEC(100));
-		ERR_CHK(ret);
-
-		LOG_DBG("Got btn evt from queue - id = %d, action = %d", msg.button_pin,
-			msg.button_action);
-
-		if (msg.button_action != BUTTON_PRESS) {
-			LOG_WRN("Unhandled button action");
-			return;
-		}
-
-		switch (msg.button_pin) {
-		case BUTTON_PLAY_PAUSE:
-			if (IS_ENABLED(CONFIG_WALKIE_TALKIE_DEMO)) {
-				LOG_DBG("Play/pause not supported in walkie-talkie mode");
-				return;
-			}
-			/* Starts/pauses the audio stream */
-			ret = le_audio_play_pause();
-			if (ret) {
-				LOG_WRN("Could not play/pause");
-			}
-
-			break;
-
-		case BUTTON_VOLUME_UP:
-			ret = le_audio_volume_up();
-			if (ret) {
-				LOG_WRN("Failed to increase volume");
-			}
-
-			break;
-
-		case BUTTON_VOLUME_DOWN:
-			ret = le_audio_volume_down();
-			if (ret) {
-				LOG_WRN("Failed to decrease volume");
-			}
-
-			break;
-
-		case BUTTON_4:
-#if (CONFIG_AUDIO_TEST_TONE)
-			if (IS_ENABLED(CONFIG_WALKIE_TALKIE_DEMO)) {
-				LOG_DBG("Test tone is disabled in walkie-talkie mode");
-				break;
-			}
-
-			ret = test_tone_button_press();
-#else
-			ret = le_audio_user_defined_button_press(LE_AUDIO_USER_DEFINED_ACTION_1);
-#endif /*CONFIG_AUDIO_TEST_TONE*/
-
-			if (ret) {
-				LOG_WRN("Failed button 4 press, ret: %d", ret);
-			}
-
-			break;
-
-		case BUTTON_5:
-#if (CONFIG_AUDIO_MUTE)
-			ret = le_audio_volume_mute();
-			if (ret) {
-				LOG_WRN("Failed to mute volume");
-			}
-#else
-			ret = le_audio_user_defined_button_press(LE_AUDIO_USER_DEFINED_ACTION_2);
-			if (ret) {
-				LOG_WRN("User defined button 5 action failed, ret: %d", ret);
-			}
-#endif
-			break;
-
-		default:
-			LOG_WRN("Unexpected/unhandled button id: %d", msg.button_pin);
-		}
-
-		STACK_USAGE_PRINT("button_msg_thread", &button_msg_sub_thread_data);
-	}
-}
 
 /* Handle Bluetooth LE audio events */
 static void le_audio_msg_sub_thread(void)
@@ -482,14 +380,6 @@ int streamctrl_start(void)
 
 	ret = data_fifo_init(&ble_fifo_rx);
 	ERR_CHK_MSG(ret, "Failed to set up ble_rx FIFO");
-
-	button_msg_sub_thread_id =
-		k_thread_create(&button_msg_sub_thread_data, button_msg_sub_thread_stack,
-				CONFIG_BUTTON_MSG_SUB_STACK_SIZE,
-				(k_thread_entry_t)button_msg_sub_thread, NULL, NULL, NULL,
-				K_PRIO_PREEMPT(CONFIG_BUTTON_MSG_SUB_THREAD_PRIO), 0, K_NO_WAIT);
-	ret = k_thread_name_set(button_msg_sub_thread_id, "BUTTON_MSG_SUB");
-	ERR_CHK(ret);
 
 	le_audio_msg_sub_thread_id =
 		k_thread_create(&le_audio_msg_sub_thread_data, le_audio_msg_sub_thread_stack,

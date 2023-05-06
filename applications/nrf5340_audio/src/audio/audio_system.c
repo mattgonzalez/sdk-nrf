@@ -15,11 +15,9 @@
 #include "audio_i2s.h"
 #include "data_fifo.h"
 #include "led.h"
-#include "hw_codec.h"
 #include "tone.h"
 #include "contin_array.h"
 #include "pcm_stream_channel_modifier.h"
-#include "audio_usb.h"
 #include "streamctrl.h"
 
 #include <zephyr/logging/log.h>
@@ -188,89 +186,6 @@ int audio_encode_test_tone_set(uint32_t freq)
 	return 0;
 }
 
-/* This function is only used on gateway using USB as audio source and bidirectional stream */
-int audio_decode(void const *const encoded_data, size_t encoded_data_size, bool bad_frame)
-{
-	int ret;
-	uint32_t blocks_alloced_num;
-	uint32_t blocks_locked_num;
-	static int debug_trans_count;
-	static void *tmp_pcm_raw_data[CONFIG_FIFO_FRAME_SPLIT_NUM];
-	static void *pcm_raw_data;
-	size_t pcm_block_size;
-
-	if (!sw_codec_cfg.initialized) {
-		/* Throw away data */
-		/* This can happen when using play/pause since there might be
-		 * some packages left in the buffers
-		 */
-		LOG_DBG("Trying to decode while codec is not initialized");
-		return -EPERM;
-	}
-
-	ret = data_fifo_num_used_get(&fifo_tx, &blocks_alloced_num, &blocks_locked_num);
-	if (ret) {
-		return ret;
-	}
-
-	uint8_t free_blocks_num = FIFO_TX_BLOCK_COUNT - blocks_locked_num;
-
-	/* If not enough space for a full frame, remove oldest samples to make room */
-	if (free_blocks_num < CONFIG_FIFO_FRAME_SPLIT_NUM) {
-		void *old_data;
-		size_t size;
-
-		for (int i = 0; i < (CONFIG_FIFO_FRAME_SPLIT_NUM - free_blocks_num); i++) {
-			ret = data_fifo_pointer_last_filled_get(&fifo_tx, &old_data, &size,
-								K_NO_WAIT);
-			if (ret == -ENOMSG) {
-				/* If there are no more blocks in FIFO, break */
-				break;
-			}
-
-			data_fifo_block_free(&fifo_tx, &old_data);
-		}
-	}
-
-	for (int i = 0; i < CONFIG_FIFO_FRAME_SPLIT_NUM; i++) {
-		ret = data_fifo_pointer_first_vacant_get(&fifo_tx, &tmp_pcm_raw_data[i], K_FOREVER);
-		if (ret) {
-			return ret;
-		}
-	}
-
-	ret = sw_codec_decode(encoded_data, encoded_data_size, bad_frame, &pcm_raw_data,
-			      &pcm_block_size);
-	if (ret) {
-		LOG_ERR("Failed to decode");
-		return ret;
-	}
-
-	/* Split decoded frame into CONFIG_FIFO_FRAME_SPLIT_NUM blocks */
-	for (int i = 0; i < CONFIG_FIFO_FRAME_SPLIT_NUM; i++) {
-		memcpy(tmp_pcm_raw_data[i], (char *)pcm_raw_data + (i * (BLOCK_SIZE_BYTES)),
-		       BLOCK_SIZE_BYTES);
-
-		ret = data_fifo_block_lock(&fifo_tx, &tmp_pcm_raw_data[i], BLOCK_SIZE_BYTES);
-		if (ret) {
-			LOG_ERR("Failed to lock block");
-			return ret;
-		}
-	}
-	if (debug_trans_count == DEBUG_INTERVAL_NUM) {
-		ret = data_fifo_num_used_get(&fifo_tx, &blocks_alloced_num, &blocks_locked_num);
-		if (ret) {
-			return ret;
-		}
-		LOG_DBG(COLOR_MAGENTA "TX alloced: %d, locked: %d" COLOR_RESET, blocks_alloced_num,
-			blocks_locked_num);
-		debug_trans_count = 0;
-	} else {
-		debug_trans_count++;
-	}
-
-	return 0;
-}
 
 /**@brief Initializes the FIFOs, the codec, and starts the I2S
  */
@@ -312,16 +227,8 @@ void audio_system_start(void)
 		ERR_CHK(ret);
 	}
 
-#if ((CONFIG_AUDIO_SOURCE_USB) && (CONFIG_AUDIO_DEV == GATEWAY))
-	ret = audio_usb_start(&fifo_tx, &fifo_rx);
-	ERR_CHK(ret);
-#else
-	ret = hw_codec_default_conf_enable();
-	ERR_CHK(ret);
-
 	ret = audio_datapath_start(&fifo_rx);
 	ERR_CHK(ret);
-#endif /* ((CONFIG_AUDIO_SOURCE_USB) && (CONFIG_AUDIO_DEV == GATEWAY))) */
 }
 
 void audio_system_stop(void)
@@ -335,15 +242,8 @@ void audio_system_stop(void)
 
 	LOG_DBG("Stopping codec");
 
-#if ((CONFIG_AUDIO_DEV == GATEWAY) && CONFIG_AUDIO_SOURCE_USB)
-	audio_usb_stop();
-#else
-	ret = hw_codec_soft_reset();
-	ERR_CHK(ret);
-
 	ret = audio_datapath_stop();
 	ERR_CHK(ret);
-#endif /* ((CONFIG_AUDIO_DEV == GATEWAY) && CONFIG_AUDIO_SOURCE_USB) */
 
 	ret = sw_codec_uninit(sw_codec_cfg);
 	ERR_CHK_MSG(ret, "Failed to uninit codec");
@@ -375,15 +275,9 @@ void audio_system_init(void)
 {
 	int ret;
 
-#if ((CONFIG_AUDIO_DEV == GATEWAY) && (CONFIG_AUDIO_SOURCE_USB))
-	ret = audio_usb_init();
-	ERR_CHK(ret);
-#else
 	ret = audio_datapath_init();
 	ERR_CHK(ret);
-	ret = hw_codec_init();
-	ERR_CHK(ret);
-#endif
+	audio_i2s_init();
 }
 
 static int cmd_audio_system_start(const struct shell *shell, size_t argc, const char **argv)

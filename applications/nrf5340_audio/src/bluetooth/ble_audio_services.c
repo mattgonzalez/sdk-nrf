@@ -15,7 +15,6 @@
 #include <zephyr/bluetooth/audio/mcc.h>
 
 #include "macros_common.h"
-#include "hw_codec.h"
 
 #include <zephyr/logging/log.h>
 LOG_MODULE_REGISTER(ble_audio_services, CONFIG_AUDIO_SERVICES_LOG_LEVEL);

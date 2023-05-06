@@ -65,29 +65,17 @@ static struct bt_conn_cb dfu_conn_callbacks = {
 
 static void dfu_set_bt_name(void)
 {
-	char name[CONFIG_BT_DEVICE_NAME_MAX] = { 0 };
+	char name[LOCAL_NAME_MAX] = { 0 };
 
-	strlcpy(name, CONFIG_BT_DEVICE_NAME, CONFIG_BT_DEVICE_NAME_MAX);
-	strlcat(name, "_", CONFIG_BT_DEVICE_NAME_MAX);
-#if (CONFIG_AUDIO_DEV == GATEWAY)
-	strlcat(name, GW_TAG, CONFIG_BT_DEVICE_NAME_MAX);
-#else
-	enum audio_channel channel;
-
-	channel_assignment_get(&channel);
-
-	if (channel == AUDIO_CH_L) {
-		strlcat(name, CH_L_TAG, CONFIG_BT_DEVICE_NAME_MAX);
-	} else {
-		strlcat(name, CH_R_TAG, CONFIG_BT_DEVICE_NAME_MAX);
-	}
-
-#endif
-	strlcat(name, "_DFU", CONFIG_BT_DEVICE_NAME_MAX);
-	bt_set_name(name);
+	// Setup and set local BT name
+	snprintf(name, sizeof name, "%s_%6X_DFU", LOCAL_NAME, NRF_FICR->INFO.DEVICEID[0] & 0xffffff);
+	LOG_INF("Local name: %s", name);
+	int ret = bt_set_name(name);
+	if (ret) 
+		LOG_WRN("Unable to set name %s (ret %d)", name, ret);
 }
 
-static void on_ble_core_ready_dfu_entry(void)
+void on_ble_core_ready_dfu_entry(void)
 {
 	if (IS_ENABLED(CONFIG_SETTINGS)) {
 		settings_load();

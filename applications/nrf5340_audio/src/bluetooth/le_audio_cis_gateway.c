@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: LicenseRef-Nordic-5-Clause
  */
 
+#include "..\echo_aio_bt.h"
 #include "le_audio.h"
 
 #include <zephyr/zbus/zbus.h>
@@ -1102,7 +1103,8 @@ static void on_device_found(const bt_addr_le_t *addr, int8_t rssi, uint8_t type,
 	case BT_GAP_ADV_TYPE_SCAN_RSP:
 		/* Note: May lead to connection creation */
 		if (bonded_num < CONFIG_BT_MAX_PAIRED) {
-			ad_parse(p_ad, addr);
+			if(rssi > -70)
+				ad_parse(p_ad, addr);
 		}
 		break;
 	default:
@@ -1161,6 +1163,7 @@ static void connected_cb(struct bt_conn *conn, uint8_t err)
 
 	/* ACL connection established */
 	LOG_INF("Connected: %s", addr);
+	printk("Connected: %s", addr);
 
 	ret = bt_hci_get_conn_handle(conn, &conn_handle);
 	if (ret) {

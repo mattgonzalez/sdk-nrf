@@ -13,8 +13,6 @@ choice AUDIO_FRAME_DURATION
 	default AUDIO_FRAME_DURATION_10_MS
 	help
 	  LC3 supports frame duration of 7.5 and 10 ms.
-	  If USB is selected as audio source, we should
-	  have a frame duration of 10 ms since USB sends 1ms at a time.
 
 config AUDIO_FRAME_DURATION_7_5_MS
 	bool "7.5 ms"
@@ -74,7 +72,6 @@ config AUDIO_SAMPLE_RATE_HZ
 	default 48000 if AUDIO_SAMPLE_RATE_48000_HZ
 	help
 	  I2S supports 16, 24, and 48 kHz sample rates for both input and output.
-	  USB supports only 48 kHz for input.
 
 choice AUDIO_BIT_DEPTH
 	prompt "Audio bit depth"
@@ -121,15 +118,9 @@ config AUDIO_MAX_PRES_DLY_US
 choice AUDIO_SOURCE_GATEWAY
 	prompt "Audio source for gateway"
 	default AUDIO_SOURCE_I2S if WALKIE_TALKIE_DEMO
-	default AUDIO_SOURCE_USB
+	default AUDIO_SOURCE_I2S
 	help
 	  Select audio source for the gateway.
-
-config AUDIO_SOURCE_USB
-	bool "Use USB as audio source"
-	help
-	  Set USB as audio source. Note that this forces the
-	  stream to be unidirectional because of CPU load.
 
 config AUDIO_SOURCE_I2S
 	bool "Use I2S as audio source"
@@ -309,13 +300,6 @@ config AUDIO_DATAPATH_THREAD_PRIO
 	help
 	  This is a preemptible thread.
 
-config BUTTON_MSG_SUB_THREAD_PRIO
-	int "Priority for button message subscribe thread"
-	default 5
-	help
-	  This is a preemptible thread.
-	  This thread will subscribe to button events from zbus.
-
 config LE_AUDIO_MSG_SUB_THREAD_PRIO
 	int "Priority for LE Audio message subscribe thread"
 	default 5
@@ -350,10 +334,6 @@ endmenu # Stack sizes
 
 #----------------------------------------------------------------------------#
 menu "Zbus"
-
-config BUTTON_MSG_SUB_QUEUE_SIZE
-	int "Queue size for button message subscriber"
-	default 4
 
 config LE_AUDIO_MSG_SUB_QUEUE_SIZE
 	int "Queue size for LE Audio message subscriber"

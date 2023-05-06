@@ -4,35 +4,35 @@
 # SPDX-License-Identifier: LicenseRef-Nordic-5-Clause
 #
 
-menu "Drivers"
+# menu "Drivers"
 
-#----------------------------------------------------------------------------#
-menu "Thread priorities"
+# #----------------------------------------------------------------------------#
+# menu "Thread priorities"
 
-config CS47L63_THREAD_PRIO
-	int "Priority for CS47L63 thread"
-	default 5
-	help
-	  This is a preemptible thread
+# config CS47L63_THREAD_PRIO
+# 	int "Priority for CS47L63 thread"
+# 	default 5
+# 	help
+# 		This is a preemptible thread
 
-endmenu # Thread priorities
+# endmenu # Thread priorities
 
-#----------------------------------------------------------------------------#
-menu "Stack sizes"
+# #----------------------------------------------------------------------------#
+# menu "Stack sizes"
 
-config CS47L63_STACK_SIZE
-	int "Stack size for CS47L63"
-	default 700
+# config CS47L63_STACK_SIZE
+# 	int "Stack size for CS47L63"
+# 	default 700
 
-endmenu # Stack sizes
+# endmenu # Stack sizes
 
-#----------------------------------------------------------------------------#
-menu "Log levels"
+# #----------------------------------------------------------------------------#
+# menu "Log levels"
 
-module = CS47L63
-module-str = cs47l63
-source "subsys/logging/Kconfig.template.log_config"
+# module = CS47L63
+# module-str = cs47l63
+# source "subsys/logging/Kconfig.template.log_config"
 
-endmenu # Log levels
+# endmenu # Log levels
 
-endmenu # Drivers
+# endmenu # Drivers
